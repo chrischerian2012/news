@@ -1,0 +1,9 @@
+{
+  "name": "NewsFinder",
+  "short_name": "NewsFinder",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2457f5",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

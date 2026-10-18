@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NewsFinder</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="theme-color" content="#2457f5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NewsFinder">
+<style>
+:root{--bg:#fff;--ink:#14213d;--mute:#667085;--line:#e4e7ec;--acc:#2457f5;--chip:#eef2ff}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1424;--ink:#eef1f8;--mute:#98a2b3;--line:#232c44;--acc:#7da0ff;--chip:#1a2340}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:680px;margin:0 auto;padding:20px 16px 48px}
+h1{font:700 28px/1.1 Georgia,"Times New Roman",serif;margin:8px 0 16px}
+form{display:flex;gap:8px}
+input{flex:1;min-width:0;font:inherit;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+input:focus{outline:2px solid var(--acc);border-color:transparent}
+button{font:inherit;cursor:pointer}
+form button{padding:0 18px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-weight:600}
+.tabs{display:flex;gap:8px;margin:14px 0;overflow-x:auto;padding-bottom:2px}
+.tabs button{white-space:nowrap;padding:6px 12px;border:1px solid var(--line);border-radius:99px;background:none;color:var(--ink)}
+.tabs button[aria-pressed=true]{background:var(--chip);border-color:var(--acc);color:var(--acc);font-weight:600}
+.item{display:flex;gap:10px;padding:14px 0;border-top:1px solid var(--line)}
+.item a{flex:1;color:inherit;text-decoration:none}
+.item a:hover .t{text-decoration:underline}
+.t{font-weight:600;display:block}
+.m{color:var(--mute);font-size:14px;margin-top:2px;display:block}
+.save{border:0;background:none;font-size:22px;color:var(--mute);align-self:flex-start;padding:0 4px}
+.save[aria-pressed=true]{color:var(--acc)}
+.note{color:var(--mute);padding:24px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>NewsFinder</h1>
+  <form id="f"><input id="q" type="search" placeholder="Search a topic, like “electric cars”" autocomplete="off" enterkeyhint="search"><button>Search</button></form>
+  <div class="tabs" id="tabs"></div>
+  <div id="out"><p class="note">Type a topic to see the latest from news sites, Hacker News and Reddit.</p></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let items = [], tab = 'All', saved = load();
+function load(){ try { return JSON.parse(localStorage.getItem('saved') || '[]'); } catch { return []; } }
+function store(){ try { localStorage.setItem('saved', JSON.stringify(saved)); } catch {} }
+function ago(t){
+  const m = Math.max(1, Math.round((Date.now() - t) / 60000));
+  if (m < 60) return m + ' min ago';
+  if (m < 1440) return Math.round(m / 60) + ' h ago';
+  return Math.round(m / 1440) + ' d ago';
+}
+function row(i){
+  const on = saved.some(s => s.url === i.url);
+  const d = document.createElement('div'); d.className = 'item';
+  const a = document.createElement('a'); a.href = i.url; a.target = '_blank'; a.rel = 'noopener';
+  const t = document.createElement('span'); t.className = 't'; t.textContent = i.title;
+  const m = document.createElement('span'); m.className = 'm'; m.textContent = i.source + ' · ' + ago(i.time);
+  a.append(t, m);
+  const b = document.createElement('button'); b.className = 'save'; b.textContent = on ? '★' : '☆';
+  b.setAttribute('aria-pressed', on); b.setAttribute('aria-label', on ? 'Remove from saved' : 'Save article');
+  b.onclick = () => { saved = on ? saved.filter(s => s.url !== i.url) : [i, ...saved]; store(); render(); };
+  d.append(a, b); return d;
+}
+function render(){
+  const names = ['All', 'News', 'Hacker News', 'Reddit', 'Saved'];
+  $('tabs').replaceChildren(...names.map(n => {
+    const b = document.createElement('button'); b.textContent = n; b.setAttribute('aria-pressed', n === tab);
+    b.onclick = () => { tab = n; render(); }; return b;
+  }));
+  const list = tab === 'Saved' ? saved : tab === 'All' ? items : items.filter(i => i.platform === tab);
+  if (!list.length) {
+    const p = document.createElement('p'); p.className = 'note';
+    p.textContent = tab === 'Saved' ? 'Nothing saved yet. Tap ☆ on an article to keep it here.' : items.length ? 'No results from this source.' : $('out').dataset.msg || 'Type a topic to see the latest.';
+    return $('out').replaceChildren(p);
+  }
+  $('out').replaceChildren(...list.map(row));
+}
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  const q = $('q').value.trim(); if (!q) return;
+  $('q').blur(); items = []; tab = tab === 'Saved' ? 'All' : tab;
+  $('out').dataset.msg = 'Searching…'; render();
+  try {
+    const r = await fetch('/api/news?q=' + encodeURIComponent(q));
+    const j = await r.json();
+    items = j.items || [];
+    $('out').dataset.msg = 'No news found for “' + q + '”. Try a different word.';
+  } catch {
+    $('out').dataset.msg = 'Could not load news. Check your connection and try again.';
+  }
+  render();
+};
+render();
+</script>
+</body>
+</html>
